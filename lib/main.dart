@@ -12,10 +12,8 @@ class MyApp extends StatelessWidget {
       title: 'Test App',
       theme: ThemeData(
         scaffoldBackgroundColor: Colors.white,
-        primarySwatch: Colors.grey,
       ),
       home: ProfileFormPage(),
     );
   }
 }
-
