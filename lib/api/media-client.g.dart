@@ -34,10 +34,12 @@ class _MediaApiClient implements MediaApiClient {
   }
 
   @override
-  Future<String> postUserMedia() async {
+  Future<String> postUserMedia(file) async {
     const _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
-    final _data = <String, dynamic>{};
+    final formData =
+        FormData.fromMap({"media": await MultipartFile.fromFile(file.path)});
+    final _data = formData;
     final _result = await _dio.request<String>('/media/',
         queryParameters: queryParameters,
         options: RequestOptions(
@@ -74,7 +76,7 @@ class _MediaApiClient implements MediaApiClient {
     const _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
     final _data = media;
-    final _result = await _dio.request<String>('/media/re-arrange',
+    final _result = await _dio.request<String>('/media/re-arrange/',
         queryParameters: queryParameters,
         options: RequestOptions(
             method: 'POST',

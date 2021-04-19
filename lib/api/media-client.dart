@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:retrofit/http.dart';
 import 'package:dio/dio.dart';
 
@@ -11,11 +13,11 @@ abstract class MediaApiClient {
   Future<String> getUserMedia();
 
   @POST('/media/')
-  Future<String> postUserMedia();
+  Future<String> postUserMedia(@Body() File file);
 
   @DELETE('/media/')
   Future<String> deleteUserMedia(@Body() String id);
 
-  @POST('/media/re-arrange')
-  Future<String> rearrangeMedia(@Body() String media);
+  @POST('/media/re-arrange/')
+  Future<String> rearrangeMedia(@Body() Map<String,dynamic> media);
 }

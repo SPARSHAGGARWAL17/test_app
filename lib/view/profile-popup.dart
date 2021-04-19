@@ -1,8 +1,22 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:global_configuration/global_configuration.dart';
+import 'package:test_app/bloc/media-cubit.dart';
+import 'package:test_app/bloc/media-states.dart';
+import 'package:test_app/model/media.dart';
+import 'package:chewie/chewie.dart';
+import 'package:video_player/video_player.dart' show VideoPlayerController;
 
 class ProfilePopUpPage extends StatelessWidget {
-  final String image;
-  ProfilePopUpPage(this.image);
+  final Media media;
+  final UserMediaLoaded mediaLoaded;
+  ProfilePopUpPage(
+    this.media,
+    this.mediaLoaded,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -31,30 +45,50 @@ class ProfilePopUpPage extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 25, vertical: 8),
           child: Column(
             children: [
-              Container(
-                height: MediaQuery.of(context).size.height * 0.65,
-                width: double.infinity,
-                // padding: EdgeInsets.symmetric(horizontal: 15),
-
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(5),
-                  child: Image.asset(
-                    'assets/$image',
-                    fit: BoxFit.fill,
+              if (media.longURL.endsWith('.mp4'))
+                Container(
+                  height: MediaQuery.of(context).size.height * 0.65,
+                  width: double.infinity,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: Chewie(
+                      controller: ChewieController(
+                        videoPlayerController: VideoPlayerController.network(
+                            GlobalConfiguration().get('fileURL') +
+                                media.longURL),
+                        autoPlay: false,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              if (!media.longURL.endsWith('.mp4'))
+                Container(
+                  height: MediaQuery.of(context).size.height * 0.65,
+                  width: double.infinity,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: Image.network(
+                      '${GlobalConfiguration().get('fileURL')}${media.longURL}',
+                      fit: BoxFit.fill,
+                    ),
+                  ),
+                ),
               SizedBox(height: 40),
               Center(
                 child: TextButton(
-                  onPressed: () {},
+                  onPressed: () async {
+                    mediaLoaded.deleteMedia(media.id);
+                    BlocProvider.of<UserMediaCubit>(context)
+                        .deleteUserMedia(media.id, mediaLoaded.data);
+                    Navigator.of(context).pop();
+                  },
                   child: Container(
                     width: 120,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          'Other Details',
+                          'Delete this file',
                           style: TextStyle(
                             color: Colors.pink,
                             fontSize: 13,

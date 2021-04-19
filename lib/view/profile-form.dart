@@ -1,6 +1,18 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:animations/animations.dart' show OpenContainer;
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:global_configuration/global_configuration.dart';
+import 'package:test_app/bloc/media-cubit.dart';
+import 'package:test_app/bloc/media-states.dart';
+import 'package:test_app/model/media.dart';
 import 'package:test_app/view/profile-popup.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 
 class ProfileFormPage extends StatefulWidget {
   @override
@@ -8,16 +20,33 @@ class ProfileFormPage extends StatefulWidget {
 }
 
 class _ProfileFormPageState extends State<ProfileFormPage> {
-  final List<String> images = [
-    'image0.jpg',
-    'image1.jpg',
-    'image2.jpg',
-    'image3.jpg',
-    'image4.jpg',
-    'image5.jpg',
-  ];
+  PlatformFile file;
+  bool uploading = false;
   bool dragging = false;
   String currentGender = 'Male';
+  Future<String> getVideoThumbnail(String videoUrl) async {
+    var videoPath = (await getTemporaryDirectory()).path;
+    var path = await VideoThumbnail.thumbnailFile(
+      video: videoUrl,
+      imageFormat: ImageFormat.JPEG,
+      thumbnailPath: videoPath,
+      maxWidth: 128,
+      quality: 25,
+    );
+    return path;
+  }
+
+  Future<PlatformFile> pickFile() async {
+    FilePickerResult result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: ['mp4', 'jpg', 'jpeg', 'png'],
+    );
+    if (result != null) {
+      file = result.files[0];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -47,96 +76,153 @@ class _ProfileFormPageState extends State<ProfileFormPage> {
                 Container(
                   height: MediaQuery.of(context).size.height * 0.45,
                   // padding: EdgeInsets.symmetric(horizontal: 15),
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      childAspectRatio: 2 / 3,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                    ),
-                    itemCount: images.length,
-                    itemBuilder: (context, index) {
-                      return OpenContainer(
-                        openBuilder: (context, action) {
-                          return ProfilePopUpPage(images[index]);
-                        },
-                        closedBuilder: (context, action) {
-                          if (dragging)
-                            return DragTarget<String>(
-                              onAccept: (data) {
-                                var initImage = images[index];
-                                var initIndex = images.indexOf(initImage);
-                                var finalIndex = images.indexOf(data);
-                                images[initIndex] = data;
-                                images[finalIndex] = initImage;
-                                dragging = false;
-                                setState(() {});
+                  child: BlocBuilder<UserMediaCubit, UserMediaStates>(
+                      builder: (context, state) {
+                    if (state is UserMediaLoaded)
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          childAspectRatio: 2 / 3,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: state.data.userMedia.length < 6
+                            ? state.data.userMedia.length + 1
+                            : state.data.userMedia.length,
+                        itemBuilder: (context, index) {
+                          var _images = state.data.userMedia;
+                          if (index == _images.length) {
+                            return InkWell(
+                              onTap:uploading?null: () async {
+                                await pickFile();
+                                if (file != null) {
+                                  print('uploading-file');
+                                  setState(() {
+                                    uploading = true;
+                                  });
+                                  BlocProvider.of<UserMediaCubit>(context)
+                                      .postUserMedia(File(file.path))
+                                      .then((value) {
+                                    BlocProvider.of<UserMediaCubit>(context)
+                                        .loadUserMedia();
+                                    setState(() {
+                                      uploading = false;
+                                    });
+                                  });
+                                }
                               },
-                              builder: (context, candidateData, rejectedData) {
-                                return Container(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(5),
-                                    child: Image.asset(
-                                      'assets/${images[index]}',
-                                      fit: BoxFit.fill,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child:uploading?CupertinoActivityIndicator(): Icon(Icons.add, color: Colors.black),
+                                alignment: Alignment.center,
+                              ),
+                            );
+                          }
+                          return OpenContainer(
+                            openBuilder: (context, action) {
+                              return ProfilePopUpPage(_images[index], state);
+                            },
+                            closedBuilder: (context, action) {
+                              if (dragging)
+                                return DragTarget<Media>(
+                                  onAccept: (data) {
+                                    var initImage = _images[index];
+                                    var initIndex = _images.indexOf(initImage);
+                                    var finalIndex = _images.indexOf(data);
+                                    _images[initIndex] = data;
+                                    _images[finalIndex] = initImage;
+                                    dragging = false;
+                                    setState(() {});
+                                    BlocProvider.of<UserMediaCubit>(context)
+                                        .rearrangeMedia(_images);
+                                  },
+                                  builder:
+                                      (context, candidateData, rejectedData) {
+                                    if (_images[index]
+                                        .longURL
+                                        .endsWith('.mp4')) {
+                                      return buildVideoThumbnail(
+                                          _images, index);
+                                    }
+                                    return Container(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(5),
+                                        child: Image.network(
+                                          '${GlobalConfiguration().get('fileURL')}${state.data.userMedia[index].longURL}',
+                                          fit: BoxFit.fill,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              return InkWell(
+                                onTap: action,
+                                child: Draggable<Media>(
+                                  childWhenDragging: Container(
+                                    child: Text('dragging'),
+                                  ),
+                                  onDragEnd: (details) {
+                                    setState(() {
+                                      dragging = false;
+                                    });
+                                    print('Drag-end');
+                                    print(details);
+                                  },
+                                  onDragCompleted: () {
+                                    setState(() {
+                                      dragging = false;
+                                    });
+                                    print('drag-completed');
+                                  },
+                                  onDragUpdate: (details) {
+                                    setState(() {
+                                      dragging = true;
+                                    });
+                                    print('drag-update');
+                                  },
+                                  data: _images[index],
+                                  feedback: Container(
+                                    height: 200,
+                                    width: 140,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(5),
+                                      child: _images[index]
+                                              .longURL
+                                              .endsWith('.mp4')
+                                          ? buildVideoThumbnail(_images, index)
+                                          : Image.network(
+                                              '${GlobalConfiguration().get('fileURL')}${state.data.userMedia[index].longURL}',
+                                              fit: BoxFit.fill,
+                                            ),
                                     ),
                                   ),
-                                );
-                              },
-                            );
-                          return InkWell(
-                            onTap: action,
-                            child: Draggable<String>(
-                              childWhenDragging: Container(
-                                child: Text('dragging'),
-                              ),
-                              onDragEnd: (details) {
-                                setState(() {
-                                  dragging = false;
-                                });
-                                print('Drag-end');
-                                print(details);
-                              },
-                              onDragCompleted: () {
-                                setState(() {
-                                  dragging = false;
-                                });
-                                print('drag-completed');
-                              },
-                              onDragUpdate: (details) {
-                                setState(() {
-                                  dragging = true;
-                                });
-                                print('drag-update');
-                              },
-                              data: images[index],
-                              feedback: Container(
-                                height: 200,
-                                width: 140,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(5),
-                                  child: Image.asset(
-                                    'assets/${images[index]}',
-                                    fit: BoxFit.fill,
+                                  child: Container(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(5),
+                                      child: _images[index]
+                                              .longURL
+                                              .endsWith('.mp4')
+                                          ? buildVideoThumbnail(_images, index)
+                                          : Image.network(
+                                              '${GlobalConfiguration().get('fileURL')}${state.data.userMedia[index].longURL}',
+                                              fit: BoxFit.fill,
+                                            ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: Container(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(5),
-                                  child: Image.asset(
-                                    'assets/${images[index]}',
-                                    fit: BoxFit.fill,
-                                  ),
-                                ),
-                              ),
-                            ),
+                              );
+                            },
                           );
                         },
                       );
-                    },
-                  ),
+                    else {
+                      return Center(child: CupertinoActivityIndicator());
+                    }
+                  }),
                 ),
                 Container(
                   height: MediaQuery.of(context).size.height * 0.5,
@@ -233,7 +319,10 @@ class _ProfileFormPageState extends State<ProfileFormPage> {
                       SizedBox(height: 5),
                       Center(
                         child: TextButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            BlocProvider.of<UserMediaCubit>(context)
+                                .loadUserMedia();
+                          },
                           child: Container(
                             width: 120,
                             child: Row(
@@ -281,5 +370,28 @@ class _ProfileFormPageState extends State<ProfileFormPage> {
         ),
       ),
     );
+  }
+
+  FutureBuilder<String> buildVideoThumbnail(List<Media> _images, int index) {
+    return FutureBuilder<String>(
+        future: getVideoThumbnail(
+            GlobalConfiguration().get('fileURL') + _images[index].longURL),
+        builder: (context, snapshot) {
+          if (snapshot.hasData)
+            return Container(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(5),
+                child: Image.file(
+                  File(snapshot.data),
+                  fit: BoxFit.fill,
+                ),
+              ),
+            );
+          else {
+            return Container(
+              child: CupertinoActivityIndicator(),
+            );
+          }
+        });
   }
 }
