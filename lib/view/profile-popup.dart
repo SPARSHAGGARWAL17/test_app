@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:global_configuration/global_configuration.dart';
@@ -9,7 +10,7 @@ import 'package:test_app/model/media.dart';
 import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart' show VideoPlayerController;
 
-class ProfilePopUpPage extends StatelessWidget {
+class ProfilePopUpPage extends StatefulWidget {
   final Media media;
   final UserMediaLoaded mediaLoaded;
   ProfilePopUpPage(
@@ -18,7 +19,32 @@ class ProfilePopUpPage extends StatelessWidget {
   );
 
   @override
+  _ProfilePopUpPageState createState() => _ProfilePopUpPageState();
+}
+
+class _ProfilePopUpPageState extends State<ProfilePopUpPage> {
+  VideoPlayerController videoPlayerController;
+  Future<void> initializeVideoPlayer;
+
+  @override
+  void initState() { 
+    super.initState();
+    if (widget.media.longURL.endsWith('.mp4')) {
+      videoPlayerController =
+          VideoPlayerController.network(GlobalConfiguration().get('fileURL') + widget.media.longURL);
+      initializeVideoPlayer = videoPlayerController.initialize();
+    }
+  }
+
+  @override
+  void dispose() {
+    videoPlayerController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -45,30 +71,50 @@ class ProfilePopUpPage extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 25, vertical: 8),
           child: Column(
             children: [
-              if (media.longURL.endsWith('.mp4'))
+              if (widget.media.longURL.endsWith('.mp4'))
                 Container(
                   height: MediaQuery.of(context).size.height * 0.65,
                   width: double.infinity,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(5),
-                    child: Chewie(
-                      controller: ChewieController(
-                        videoPlayerController: VideoPlayerController.network(
-                            GlobalConfiguration().get('fileURL') +
-                                media.longURL),
-                        autoPlay: false,
-                      ),
-                    ),
+                    child: FutureBuilder<void>(
+                        future: initializeVideoPlayer,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting)
+                            return Center(
+                              child: CupertinoActivityIndicator(),
+                            );
+                          return Chewie(
+                            controller: ChewieController(
+                              videoPlayerController: videoPlayerController,
+                              autoPlay: false,
+                              autoInitialize: true,
+                              errorBuilder: (context, errorMessage) {
+                                return Container(
+                                  child: Text(errorMessage),
+                                );
+                              },
+                              looping: false,
+                              placeholder: Container(
+                                child: Center(
+                                  child: CupertinoActivityIndicator(),
+                                ),
+                              ),
+                              materialProgressColors: ChewieProgressColors(),
+                            ),
+                          );
+                        }),
                   ),
                 ),
-              if (!media.longURL.endsWith('.mp4'))
+              if (!widget.media.longURL.endsWith('.mp4'))
                 Container(
                   height: MediaQuery.of(context).size.height * 0.65,
                   width: double.infinity,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(5),
                     child: Image.network(
-                      '${GlobalConfiguration().get('fileURL')}${media.longURL}',
+                      '${GlobalConfiguration().get('fileURL')}${widget.media.longURL}',
                       fit: BoxFit.fill,
                     ),
                   ),
@@ -77,9 +123,9 @@ class ProfilePopUpPage extends StatelessWidget {
               Center(
                 child: TextButton(
                   onPressed: () async {
-                    mediaLoaded.deleteMedia(media.id);
-                    BlocProvider.of<UserMediaCubit>(context)
-                        .deleteUserMedia(media.id, mediaLoaded.data);
+                    widget.mediaLoaded.deleteMedia(widget.media.id);
+                    BlocProvider.of<UserMediaCubit>(context).deleteUserMedia(
+                        widget.media.id, widget.mediaLoaded.data);
                     Navigator.of(context).pop();
                   },
                   child: Container(
